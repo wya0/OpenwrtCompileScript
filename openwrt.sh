@@ -1,7 +1,8 @@
 #!/bin/bash
-set -u
+#set -x
+#set -u
 
-version="2.9"
+version="3.0"
 SF="Script_File"
 OW="Openwrt"
 by="ITdesk"
@@ -14,11 +15,92 @@ green="\033[32m"
 yellow="\033[33m"
 white="\033[0m"
 
+calculating_time_start() {
+	startTime=`date +%Y%m%d-%H:%M:%S`
+	startTime_s=`date +%s`
+}
+
+calculating_time_end() {
+	endTime=`date +%Y%m%d-%H:%M:%S`
+	endTime_s=`date +%s`
+	sumTime=$[ $endTime_s - $startTime_s ]
+
+	echo -e "$yellow开始时间:$green $startTime ---> $yellow结束时间:$green $endTime $white"
+	echo -e "耗时:"
+
+	#以下代码ｃｏｐｙ　https://blog.csdn.net/weixin_33478575/article/details/116683248
+	local T=$sumTime
+
+	local D=$((T/60/60/24))
+
+	local H=$((T/60/60%24))
+
+	local M=$((T/60%60))
+
+	local S=$((T%60))
+
+	(( $D > 0 )) && printf '%d 天 ' $D
+
+	(( $H > 0 )) && printf '%d 小时 ' $H
+
+	(( $M > 0 )) && printf '%d 分钟 ' $M
+
+	(( $D > 0 || $H > 0 || $M > 0 )) && printf 'and '
+
+	printf '%d 秒\n' $S
+
+	echo ""
+
+}
+
+prompt() {
+	echo -e "$green  脚本问题反馈：https://github.com/openwrtcompileshell/OpenwrtCompileScript/issues或者加群反馈(群在github有)$white"
+	echo  -e " $yellow温馨提示，最近的编译依赖有变动，如果你最近一直编译失败，建议使用脚本5.其他选项 --- 1.只搭建编译环境功能 $white"
+}
+
+source_make_clean() {
+	clear
+	echo "--------------------------------------------------------"
+	echo -e "$green++是否执行make clean清理固件++$white"
+	echo ""
+	echo "  1.执行make clean"
+	echo ""
+	echo "  2.不执行make clean"
+	echo ""
+	echo -e "$yellow  温馨提醒make clean会清理掉之前编译的固件，为了编译成功 $white"
+	echo -e "$yellow率建议执行make clean，虽然编译时间会比较久$white"
+	echo "--------------------------------------------------------"
+	read  -p "请输入你的参数(回车默认：make clean)：" mk_c
+	if [[ -z "$mk_c" ]];then
+		clear && echo -e "$green开始执行make clean $white"
+		make clean
+	else
+		case "$mk_c" in
+		1)
+		clear && echo -e "$green开始执行make clean $white"
+		make clean
+		;;
+		2)
+		clear && echo -e "$green不执行make clean $white"
+		;;
+		*)
+		clear && echo  "Error请输入正确的数字 [1-2]" && Time
+		 clear && source_make_clean
+		;;
+	esac
+	fi
+
+}
+
 rely_on() {
-	sudo apt-get -y install asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache flex \
-g++ gawk gcc gcc-multilib gettext git git-core help2man htop lib32gcc1 libc6-dev-i386 libglib2.0-dev libncurses5-dev \
-libssl-dev libtool libz-dev libelf-dev make msmtp ncurses-term ocaml-nox p7zip p7zip-full patch qemu-utils sharutils \
-subversion texinfo uglifyjs unzip upx xmlto yui-compressor zlib1g-dev make cmake device-tree-compiler  g++-multilib  python3.5  #linux-libc-dev:i386
+	sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+	bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+	git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+	libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+	mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pip libpython3-dev qemu-utils \
+	rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+
+	#sudo apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 python2.7 unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs git-core gcc-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler g++-multilib antlr3 gperf wget curl swig rsync bison g++ gcc help2man htop ncurses-term ocaml-nox sharutils yui-compressor make cmake
 }
 
 #显示编译文件夹
@@ -33,13 +115,10 @@ ls_file_luci(){
 	ls_file
 	read -p "请输入你的文件夹（记得区分大小写）：" file
 	if [[ -e $HOME/$OW/$SF/tmp ]]; then
-		echo ""
+		echo "$file" > $HOME/$OW/$SF/tmp/you_file
 	else
 		mkdir -p $HOME/$OW/$SF/tmp	
 	fi
-	
-	echo "$file" > $HOME/$OW/$SF/tmp/you_file
-	cd && cd $HOME/$OW/$file/lede
 }
 
 #显示config文件夹
@@ -60,30 +139,35 @@ Time() {
 		echo -n ${seconds_left}
 		sleep 1
 		seconds_left=$(($seconds_left - 1))
-		echo -ne "\r     \r"
+		echo -ne "\r"
 	done
 }
 
 #选项9.更新update_script
 update_script() {
 	clear
-	cd $HOME/$OW/$SF/$OCS
-	CheckUrl_github=`curl -I -m 2 -s -w "%{http_code}\n" -o /dev/null www.github.com`
-		if [[ $CheckUrl_github -eq 301 ]]; then
-			git fetch --all
-			git reset --hard origin/master
-			if [[ $? -eq 0 ]]; then
-				echo -e "$green>> 源码更新成功回车进入编译菜单$white"
-				read a
-				bash ${openwrt}
-			else
-				echo -e "$red>> 源码更新失败，重新执行代码$white"
-				update_script
-			fi
-			
+	cd $shfile
+	if [[ "$action1" == "" ]]; then
+		git fetch --all
+		git reset --hard origin/master
+		if [[ $? -eq 0 ]]; then
+			echo -e "$green>> 脚本源码更新成功$white"
+			sleep 2
 		else
-			echo -e "$red>>请检查你的网络，回车重新选择$white" && read a && Time && main_interface	
+			echo -e "$red>> 脚本源码更新失败，重新执行代码$white"
+			update_script
 		fi
+	else
+		git fetch --all
+		git reset --hard origin/master
+		if [[ $? -eq 0 ]]; then
+			echo -e "$green>> 脚本源码更新成功$white"
+			sleep 2
+		else
+			echo -e "$red>> 脚本源码更新失败，重新执行代码$white"
+			update_script
+		fi
+	fi
 }
 
 #选项5.其他选项
@@ -149,7 +233,7 @@ dl_other() {
 
 update_lean_package() {
 	ls_file_luci
-	make clean
+	source_make_clean
 	rm -rf package/lean
 	source_openwrt_Setting
 	echo "插件下载完成"
@@ -157,7 +241,6 @@ update_lean_package() {
 	display_git_log_luci
 	update_feeds
 	source_config
-	make_defconfig
 }
 
 download_package() {
@@ -172,17 +255,16 @@ download_package() {
 }
 
 download_package2() {
-	cd $HOME/$OW/$file/lede 
+	cd $HOME/$OW/$you_file/lede
 	rm -rf ./tmp
 	display_git_log_luci
 	update_feeds
 	source_config
-	make_defconfig
 }
 
 
 download_package_luci() {
-	cd $HOME/$OW/$file/lede/package/Extra-plugin
+	cd $HOME/$OW/$you_file/lede/package/Extra-plugin
 	clear
 	echo "	      -------------------------------------"
 	echo "	      	    【 5.4额外的插件 】"
@@ -190,6 +272,10 @@ download_package_luci() {
 	echo " 		  1. luci-theme-argon"
 	echo ""
 	echo "		  2. luci-app-oaf （测试中）"
+	echo ""
+	echo "		  3. cups 共享打印机"
+	echo ""
+	echo "		  4. luci-app-netkeeper（闪讯插件）"
 	echo ""
 	echo "		  99. 自定义下载插件 "
 	echo ""
@@ -205,6 +291,22 @@ download_package_luci() {
 		2)
 		git clone https://github.com/destan19/OpenAppFilter.git
 		;;
+		3)
+		cd $HOME/$OW/$you_file/lede/
+		if [[ `cat feeds.conf.default | grep "cups" | wc -l` -eq 0 ]]; then
+			echo "src-git cups https://github.com/TheMMcOfficial/lede-cups.git" >> feeds.conf.default
+		fi
+		./scripts/feeds update cups
+		./scripts/feeds install cups
+		;;
+		4)
+		cd $HOME/$OW/$you_file/lede/
+		if [[ `cat feeds.conf.default | grep "netkeeper" | wc -l` -eq 0 ]]; then
+			echo "src-git netkeeper https://github.com/sjz123321/feed-netkeeper.git" >> feeds.conf.default
+		fi
+		./scripts/feeds update netkeeper
+		./scripts/feeds install netkeeper
+		;;
 		99)
 		download_package_customize
 		;;
@@ -212,7 +314,7 @@ download_package_luci() {
 		other
 		;;
 		*)
-	clear && echo  "请输入正确的数字 [1-2,99,0]" && Time
+	clear && echo  "请输入正确的数字 [1-4,99,0]" && Time
 	download_package_luci
 	;;
 esac
@@ -226,7 +328,7 @@ if [[ $? -eq 0 ]]; then
 }
 
 download_package_customize() {	
-	cd $HOME/$OW/$file/lede/package/Extra-plugin
+	cd $HOME/$OW/$you_file/lede/package/Extra-plugin
 	clear
 	echo "--------------------------------------------------------------------------------"
 	echo "自定义下载插件"
@@ -237,7 +339,7 @@ download_package_customize() {
 	read -p "请输入你要下载的插件地址："  download_url
 	$download_url
 	if [[ $? -eq 0 ]]; then
-		cd $HOME/$OW/$file/lede
+		cd $HOME/$OW/$you_file/lede
 	else
 		clear	
 		echo -e "没有下载成功或者插件已经存在，请检查$red package/Extra-plugin $white里面是否已经存在" && Time
@@ -256,7 +358,7 @@ download_package_customize_Decide() {
 	read -p "请输入你的决定：" Decide
 	case "$Decide" in
 		1)
-		cd $HOME/$OW/$file/lede/package/Extra-plugin
+		cd $HOME/$OW/$you_file/lede/package/Extra-plugin
 		download_package_luci
 		;;
 		2)
@@ -274,8 +376,8 @@ download_package_customize_Decide() {
 source_RestoreFactory() {
 	ls_file_luci 
 	echo ""
-	if [[ -e $HOME/$OW/$file ]]; then
-			cd $HOME/$OW/$file/lede
+	if [[ -e $HOME/$OW/$you_file ]]; then
+			cd $HOME/$OW/$you_file/lede
 			echo -e  "危险操作注意：$red所有编译过的文件全部删除,openwrt源代码保存，回车继续$white  $green Ctrl+c取消$white" && read a
 			echo -e ">>$green开始删除$file文件 $white" && Time
 			echo ""
@@ -284,7 +386,7 @@ source_RestoreFactory() {
 			source_RestoreFactory
 		fi
 	make distclean
-	ln -s $HOME/$OW/$SF/dl  $HOME/$OW/$file/lede/dl
+	ln -s $HOME/$OW/$SF/dl  $HOME/$OW/$you_file/lede/dl
 	echo -e ">>$green $file文件删除完成 $white"
 	echo -e "  所有编译过的文件全部删除完成，回车可以开始编译 不需要编译Ctrl+c取消,如依旧编译失败，请重新下载源代码" && read a
 	source_if
@@ -294,14 +396,14 @@ source_RestoreFactory() {
 #选项2.二次编译 与 源码更新合并
 source_secondary_compilation() {
 		ls_file_luci
-		if [[ -e $HOME/$OW/$file ]]; then
-			cd && cd $HOME/$OW/$file/lede
+		if [[ -e $HOME/$OW/$you_file ]]; then
+			cd && cd $HOME/$OW/$you_file/lede
 	 	 else
 			clear && echo "-----文件名错误，请重新输入-----" && Time
 			source_secondary_compilation
 		fi
 		echo "开始清理之前的文件"
-		make clean && rm -rf ./tmp && Time
+		source_make_clean && rm -rf ./tmp && Time
 		if [[ `grep -o "PandoraBox" .config | wc -l` == "2" ]]; then
 				echo "检测到PandoraBox源码，开始更新"				
 				rm -rf package/lean && rm -rf ./feeds
@@ -372,6 +474,7 @@ display_git_log_luci() {
 			source_Setting_Public	
 			source_config
 			make_defconfig
+			ecc
 		else
 			echo -e  "$red >>命令错误或者网络不好，重新执行代码$white" && Time
 			display_git_log_luci
@@ -410,22 +513,19 @@ git_reset() {
 source_config() {
 	clear
 		 echo "----------------------------------------------------------------------"
-		 echo "是否要加载你之前保存的配置"
-		 echo "     1.是（加载之前保存的配置）"
-		 echo "     2.否（以全新的config进行编译）"
-		 echo "     3.继续上次的编译（不对配置做任何操作）"
+		 echo -e "$green选择编译方式$white"
 		 echo ""
-		 echo -e "$yellow PS:如果源码进行过重大更新，建议直接选择2.以全新config进行编译，以减少报错$white"
+		 echo "     1.以全新的config进行编译 (适合编译新机型)"
+		 echo "     2.继续上次的编译（不对配置做任何操作）"
+		 echo ""
+		 echo -e "$yellow PS:如果源码进行过重大更新，建议直接选择1.以全新config进行编译，以减少报错$white"
 		 echo "----------------------------------------------------------------------"
 	read -p "请输入你的决定："  config
 		case "$config" in
 			1)
-			transfer_my_config
-			;;
-			2)
 			rm -rf .config && rm -rf ./tmp
 			;;
-			3)
+			2)
 			echo ""
 			;;
 			*)
@@ -512,14 +612,24 @@ source_update() {
 }
 
 source_update_No_git_pull() {
-	source_branch=`cat "$HOME/$OW/$SF/tmp/source_branch"`
-	git fetch --all
-	git reset --hard origin/$source_branch
-	if [[ $? -eq 0 ]]; then
-		echo ""
+	if [ -z ${source_branch} ];then
+		source_branch=$(cat "$HOME/$OW/$SF/tmp/source_branch")
+	fi
+
+	clear
+	if [[ "$source_branch" == "" ]]; then
+		git fetch --all
+		git reset --hard origin/master
 	else
-		echo -e "$red>> 源码更新失败，重新执行代码$white" && Time
-		source_update_No_git_pull
+		git fetch --all
+		git reset --hard origin/$source_branch
+		if [[ $? -eq 0 ]]; then
+			echo -e "$green>> 源码更新$white"
+			sleep 1
+		else
+			echo -e "$red>> 源码更新失败，重新执行代码$white" && Time
+			source_update_No_git_pull
+		fi
 	fi
 }
 
@@ -540,24 +650,23 @@ description_if(){
    	cd
 	clear
 	echo "开始检测系统"
-	curl -I -m 2 -s -w "%{http_code}\n" -o /dev/null  www.baidu.com
-	if [[ "$?" == "0" ]]; then
-		clear && echo -e  "$green已经安装curl$white"
-	else
+	curl_if=$(dpkg -l | grep -o "curl" |sed -n '1p' | wc -l)
+	if [[ "$curl_if" == "0" ]]; then
 		clear && echo "安装一下脚本用的依赖（注：不是openwrt的依赖而是脚本本身）"
 		sudo apt update
 		sudo apt install curl -y
+	else
+		clear && echo -e  "$green已经安装curl$white"
 	fi
 
-	#添加hosts(解决golang下载慢的问题)
-	if [[ $(grep -o "34.64.4.113 proxy.golang.org" /etc/hosts | wc -l) == "1" ]]; then
-		echo "hosts设置完成"
-	else
-		clear
-		echo "添加hosts(解决golang下载慢的问题)"
-		sudo cp  /etc/hosts /etc/hosts_back
-		sudo sed -i '3a\34.64.4.113 proxy.golang.org' /etc/hosts
+:<<'COMMENT'
+	#解决golang下载慢的问题,来源：https://goproxy.cn/
+	if [[ ! "$GO111MODULE" == "no" ]]; thendescription_if
+		echo "export GO111MODULE=on" | sudo tee -a /etc/profile
+		echo "export GOPROXY=https://goproxy.cn" | sudo tee -a /etc/profile
+		source /etc/profile
 	fi
+COMMENT
 	
 	if [[ ! -d "$HOME/$OW/$SF/$OCS" ]]; then
 		echo "开始创建主文件夹"
@@ -572,6 +681,8 @@ description_if(){
 	#判断是否云编译
 	workspace_home=`echo "$HOME" | grep gitpod | wc -l`
 	if [[ "$workspace_home" == "1" ]]; then
+		echo "$yellow请注意云编译已经放弃维护很久了description_if，不保证你能编译成功,太耗时耗力，你如果不信邪你可以回车继续$white"
+		read a
         	echo "开始添加云编译系统变量"
 		Cloud_env=`gp env | grep -o "shfile" | wc -l `
        		if [[ "$Cloud_env" == "0" ]]; then
@@ -620,6 +731,7 @@ description_if(){
 		bash openwrt.sh
 	fi
 
+:<<'COMMENT'
 	#win10
 	check_win10_system=$(cat /proc/version |grep -o Microsoft@Microsoft.com)
 	check_win10_system01=$(cat /proc/version |grep -o microsoft-standard)
@@ -630,6 +742,8 @@ description_if(){
 	else
 		echo "不是win10系统" && clear
 	fi
+
+
 	
 	clear
 
@@ -647,6 +761,12 @@ description_if(){
 				clear && echo "+++++密码错误++++++" && Time && description_if
 			fi
 	fi
+COMMENT
+
+	clear
+	echo ""
+	echo -e "$red图形界面编译已停止维护，请参考底下命令行进行编译$white"
+
 }
 
 win10() {
@@ -744,6 +864,8 @@ self_test() {
 	echo "  "
 	echo "	      	    -------------------------------------------"
 	echo ""
+	echo -e "$green  脚本问题反馈：https://github.com/openwrtcompileshell/OpenwrtCompileScript/issues或者加群反馈(群在github有)$white"
+	echo ""
 	echo "  请自行决定是否修复红字的错误，以保证编译顺利，你也可以直接回车进入菜单，但有可能会出现编译失败！！！如果都是绿色正常可以忽略此段话"
 	read a
 }
@@ -808,6 +930,10 @@ main_interface() {
 		9)
 		update_script
 		;;
+		99)
+		cd $HOME/$OW/lean/lede/
+		n1_builder
+		;;
 		0)
 		exit
 		;;
@@ -819,7 +945,8 @@ esac
 }
 
 system_install() {
-	clear && echo "是否要更新系统，首次搭建选择是，其余选否(1.是  2.否)"
+	clear
+	echo -e "$green>> 是否要更新系统，首次搭建选择是，其余选否(1.是  2.否)$white"
 	read -p "请输入你的决定："  system
 		case "$system" in
 			1)
@@ -838,39 +965,50 @@ system_install() {
 
 update_system() {
 	clear
-	clear && echo "准备更新系统"	&& Time
+	clear && echo -e "$green >>准备更新系统 $white"	&& Time
 	sudo apt-get update
 	clear
-	echo "准备安装依赖" && Time
-	rely_on
-	if [[ $? -eq 0 ]]; then
-		echo "安装完成" && Time
+	javahome=`echo "$JAVA_HOME" | grep gitpod | wc -l`
+	if [[ "$javahome" == "1" ]]; then
+		clear
+		echo -e "$green >>检测到你是gitpod云编译主机，不需要安装依赖，直接创建文件夹即可 $white" && Time
+		create_file
 	else
-		clear	
-		echo "依赖没有更新或安装成功，重新执行代码" && Time
-		update_system
+		echo -e "$green >>准备安装依赖 $white" && Time
+		rely_on
+		if [[ $? -eq 0 ]]; then
+			echo -e "$green >>安装完成 $white" && Time
+		else
+			clear
+			echo -e "$red 依赖没有更新或安装成功，重新执行代码 $white" && Time
+			update_system
+		fi
 	fi
 }
 
 create_file() {
 	clear
-	echo ""
 	echo "----------------------------------------"
-	echo "		   开始创建文件夹"
+	echo -e "		   $green开始创建文件夹$white"
 	echo "----------------------------------------"
 	echo ""
-	read -p "请输入你要创建的文件夹名:" file
+	read -p "请输入你要创建的文件夹名(不要中文):" you_file
 
-	if [[ -e $HOME/$OW/$file ]]; then
-		clear && echo "文件夹已存在，请重新输入文件夹名" && Time
+	if [[ -z "$you_file" ]];then
+		echo -e "$red请不要输入空值!!!$white"
+		Time
 		create_file
-
+	elif [[ -e $HOME/$OW/$you_file ]]; then
+		clear
+		echo -e "$green你输入的$yellow$you_file$green文件夹在$yellow$HOME/$OW$green已存在，请重新输入文件夹名$white" && Time
+		create_file
 	 else
 		echo "开始创建文件夹"
-			mkdir $HOME/$OW/$file
-			cd $HOME/$OW/$file  && clear
-			echo "$file" > $HOME/$OW/$SF/tmp/you_file
-			source_download_select
+			mkdir $HOME/$OW/$you_file
+			cd $HOME/$OW/$you_file  && clear
+			echo "$you_file" > $HOME/$OW/$SF/tmp/you_file
+			#source_download_select
+			source_download_openwrt
 	 fi
 }
 
@@ -906,31 +1044,55 @@ source_download_select() {
 source_download_openwrt() {
 		clear
 		echo "  -----------------------------------------"
+		echo -e "	$green准备下载openwrt代码$white"
+		#echo -e "	$green默认下载:${yellow}Lean_master_source$white"
+		echo "  -----------------------------------------"
 		echo ""
-  		echo "	准备下载openwrt代码"
+		echo -e "	1.Lean_master_source　$yellow(* 推荐,我个人用的比较多)$white"
 		echo ""
-		echo "	1.Lean_R8(stable version)_source"
+		echo " 	2.immortalwrt_openwrt-18.06-k5.4"
 		echo ""
-		echo " 	2.Lean_R9(Trunk)_source"
+		read  -p "请输入你要下载的源代码:" Download_source_openwrt
+			case "$Download_source_openwrt" in
+				1)
+				git clone https://github.com/coolsnowwolf/lede.git lede
+				echo "lean" > $HOME/$OW/$SF/tmp/source_type
+				;;
+				2)
+				git clone -b openwrt-18.06-k5.4 --single-branch  https://github.com/immortalwrt/immortalwrt lede
+				echo "immortalwrt" > $HOME/$OW/$SF/tmp/source_type
+				;;
+				*)
+				clear && echo  "请输入正确的数字（1-2）" && Time
+				source_download_openwrt
+				 ;;
+			esac
+
+:<<'COMMENT'
 		echo ""
-		echo " 	3.Lienol(dev-19.07)_source"
 		echo ""
-		echo "	4.openwrt17.1(stable version)_source"
+		echo "	1.Lean_lede-17.01_source(我很久没对这个进行测试了)"
 		echo ""
-		echo "	5.openwrt18.6(stable version)_source"
+		echo " 	2.Lean_master_source"
 		echo ""
-		echo "	6.openwrt19.7(stable version)_source"
+		echo " 	3.Lienol(dev-19.07)_source(我很久没对这个进行测试了)"
 		echo ""
-		echo "	7.openwrt(Trunk)_source"
+		echo "	4.openwrt17.1(stable version)_source(我很久没对这个进行测试了)"
+		echo ""
+		echo "	5.openwrt18.6(stable version)_source(我很久没对这个进行测试了)"
+		echo ""
+		echo "	6.openwrt19.7(stable version)_source(我很久没对这个进行测试了)"
+		echo ""
+		echo "	7.openwrt(Trunk)_source(我很久没对这个进行测试了)"
 		echo ""
 		echo "	0.exit"
 		echo ""
-		echo ""
+		echo "我现在经常用lean的源码，并且我已很长时间没有维护这个互动界面了，你可以bash \$openwrt help查看命令用法"
 		echo "  ----------------------------------------"
 		read  -p "请输入你要下载的源代码:" Download_source_openwrt
 			case "$Download_source_openwrt" in
 				1)
-				git clone https://github.com/coolsnowwolf/openwrt.git lede
+				git clone -b lede-17.01 https://github.com/coolsnowwolf/openwrt.git lede
 				;;
 				2)
 				git clone https://github.com/coolsnowwolf/lede.git lede
@@ -958,6 +1120,9 @@ source_download_openwrt() {
 				source_download_openwrt
 				 ;;
 			esac
+COMMENT
+			echo -e "$green你的源码已经为你下载到了$yellow$HOME/$OW/$you_file$white"
+			Time
 			source_download_if
 }
 
@@ -984,10 +1149,10 @@ source_download_pandorabox_sdk() {
 				mv PandoraBox-SDK-ralink-mt7621_gcc-5.5.0_uClibc-1.0.x.Linux-x86_64 lede
 				rm -rf PandoraBox-SDK-ralink-mt7621_gcc-5.5.0_uClibc-1.0.x.Linux-x86_64.tar.xz 
 				rm -rf lede/dl
-				ln -s $HOME/$OW/$SF/dl  $HOME/$OW/$file/lede/dl
-				wget --no-check-certificate https://raw.githubusercontent.com/coolsnowwolf/lede/master/feeds.conf.default -O $HOME/$OW/$file/lede/feeds.conf.default
+				ln -s $HOME/$OW/$SF/dl  $HOME/$OW/$you_file/lede/dl
+				wget --no-check-certificate https://raw.githubusercontent.com/coolsnowwolf/lede/master/feeds.conf.default -O $HOME/$OW/$you_file/lede/feeds.conf.default
 				source_lean_package
-				cd $HOME/$OW/$file/lede	
+				cd $HOME/$OW/$you_file/lede
 				source_Soft_link			
 				update_feeds
 				make_defconfig
@@ -1001,75 +1166,50 @@ source_download_pandorabox_sdk() {
 				 ;;
 			esac
 			source_download_if
-			
-	
 }
 
 source_download_if() {
-		if [[ -e $HOME/$OW/$file/lede ]]; then
-			cd $HOME/$OW/$file/lede
-			source_if
-			source_Soft_link
-			source_openwrt			
-			update_feeds
-			source_Setting_Public
-			make_defconfig
+		if [[ -e $HOME/$OW/$you_file/lede ]]; then
+			cd $HOME/$OW/$you_file/lede
+			source_download_ok
+			ecc
 		else
 			echo ""
 			echo "源码下载失败，请检查你的网络，回车重新选择下载" && read a && Time
-			cd $HOME/$OW/$file
+			cd $HOME/$OW/$you_file
 			source_download_select
 		fi
 }
 
-source_Soft_link() {		
-		#1
-		if [[ -e $HOME/$OW/$SF/description ]]; then
-			echo ""
-		else
-			description >> $HOME/$OW/$SF/description
-		fi
-
-		#2		
-		if [[ -e $HOME/$OW/$file/lede/dl ]]; then
-			echo ""
-		else
-			ln -s  $HOME/$OW/$SF/dl $HOME/$OW/$file/lede/dl
-		fi
-	
-		#3
-		if [[ -e $HOME/$OW/$file/lede/My_config ]]; then
-			echo ""
-		else
-			ln -s  $HOME/$OW/$SF/My_config $HOME/$OW/$file/lede/My_config
-		fi
-
-		#4
-		if [[ -e $HOME/$OW/$file/lede/openwrt.sh ]]; then
-			echo ""
-		else
-			ln -s  $HOME/$OW/$SF/$OCS/openwrt.sh $HOME/$OW/$file/lede/openwrt.sh
-		fi
-		
+source_download_ok() {
+			#source_if
+			source_Soft_link
+			update_feeds
+			#source_openwrt
+			source_lean
+			#source_lienol
+			source_Setting_Public
+			make_defconfig
 }
 
 source_if() {
 		#检测源码属于那个版本
 		source_git_branch=$(git branch | sed 's/* //g')
 		if [[ `git remote -v | grep -o https://github.com/openwrt/openwrt.git | wc -l` == "2" ]]; then
+			echo "openwrt" > $HOME/$OW/$SF/tmp/source_type
 			if [[ $source_git_branch == "lede-17.01" ]]; then
-				echo "openwrt" > $HOME/$OW/$SF/tmp/source_type
 				echo "lede-17.01" > $HOME/$OW/$SF/tmp/source_branch
 			elif [[ $source_git_branch == "openwrt-18.06" ]]; then
-				echo "openwrt" > $HOME/$OW/$SF/tmp/source_type
 				echo "openwrt-18.06" > $HOME/$OW/$SF/tmp/source_branch
 			elif [[ $source_git_branch == "openwrt-19.07" ]]; then
-				echo "openwrt" > $HOME/$OW/$SF/tmp/source_type
 				echo "openwrt-19.07" > $HOME/$OW/$SF/tmp/source_branch
 			elif [[ $source_git_branch == "master" ]]; then
-				echo "openwrt" > $HOME/$OW/$SF/tmp/source_type
 				echo "master" > $HOME/$OW/$SF/tmp/source_branch
 			fi
+		elif [[ `git remote -v | grep -o https://github.com/coolsnowwolf/openwrt.git | wc -l` == "2" ]]; then
+			echo "lean" > $HOME/$OW/$SF/tmp/source_type
+			echo "lede-17.01" > $HOME/$OW/$SF/tmp/source_branch
+
 		elif [[ `git remote -v | grep -o https://github.com/coolsnowwolf/lede.git | wc -l` == "2" ]]; then
 			echo "lean" > $HOME/$OW/$SF/tmp/source_type
 			if [[ $source_git_branch == "master" ]]; then
@@ -1092,32 +1232,46 @@ source_if() {
 		fi 
 }
 
+
+source_Soft_link() {
+		#1
+		if [[ -e $HOME/$OW/$SF/description ]]; then
+			echo ""
+		else
+			description >> $HOME/$OW/$SF/description
+		fi
+
+		#2
+		if [[ -e $HOME/$OW/$you_file/lede/dl ]]; then
+			echo ""
+		else
+			ln -s  $HOME/$OW/$SF/dl $HOME/$OW/$you_file/lede/dl
+		fi
+
+		#3
+		if [[ -e $HOME/$OW/$you_file/lede/My_config ]]; then
+			echo ""
+		else
+			ln -s  $HOME/$OW/$SF/My_config $HOME/$OW/$you_file/lede/My_config
+		fi
+
+		#4
+		if [[ -e $HOME/$OW/$you_file/lede/openwrt.sh ]]; then
+			echo ""
+		else
+			ln -s  $HOME/$OW/$SF/$OCS/openwrt.sh $HOME/$OW/$you_file/lede/openwrt.sh
+		fi
+
+}
+
+
 source_openwrt() {
 		clear
 		source_type=`cat "$HOME/$OW/$SF/tmp/source_type"`
 		if [[ `echo "$source_type" | grep openwrt | wc -l` == "1" ]]; then
-			echo "----------------------------------------------------"
-  			echo -e "检测到你是$green$source_type$white源码，是否加入lean插件"
-			echo " 1.添加插件(测试功能会有问题)"
-			echo " 2.不添加插件"
-			echo "----------------------------------------------------"
-			read  -p "请输入你的选择:" Source_judgment_select
-				case "$Source_judgment_select" in
-					1)
-					rm -rf package/lean 
-					source_openwrt_Setting
-					;;
-					2)
-					echo ""
-					;;
-					*)
-					clear && echo  "请输入正确的数字（1-2）" && Time
-					source_openwrt
-					 ;;
-			esac
+			rm -rf package/lean 
+			source_openwrt_Setting
 		elif [[ `echo "$source_type" | grep lean | wc -l` == "1" ]]; then
-			echo ""
-		else
 			echo ""
 		fi
 			
@@ -1127,61 +1281,66 @@ source_openwrt_Setting() {
 		source_type=`cat "$HOME/$OW/$SF/tmp/source_type"`
 		if [[ "$source_type" == "openwrt-18.06" ]]; then
 			source_openwrt_Setting_18
-		else
-			echo ""
 		fi
-		#已知ok的插件有55r，frpc，其他有些用不到没有测试   #已知不行的插件有samb，qt
+		#下载lean插件
 		source_lean_package
 		echo -e ">>$green openwrt官方源码开始配置优化$white"
 		Time
-		
-		if [[ -e $HOME/$OW/$file/lede/include/target.mk_back ]]; then
-			echo ""
-		else
-			cp $HOME/$OW/$file/lede/include/target.mk  $HOME/$OW/$file/lede/include/target.mk_back		
-		fi			
-
-		itdesk_default_packages="DEFAULT_PACKAGES:=base-files libc libgcc busybox dropbear mtd uci opkg netifd fstools uclient-fetch logd urandom-seed urngd block-mount coremark kmod-nf-nathelper kmod-nf-nathelper-extra kmod-ipt-raw wget libustream-openssl ca-certificates default-settings luci luci-proto-relay   luci-app-sqm  luci-app-adbyby-plus luci-app-autoreboot luci-app-filetransfer luci-app-vsftpd luci-app-ssr-plus luci-app-arpbind luci-app-vlmcsd luci-app-wol luci-app-ramfree luci-app-sfe luci-app-flowoffload luci-app-nlbwmon luci-app-accesscontrol  luci-app-ttyd luci-app-watchcat luci-app-wifischedule luci-app-netdata luci-app-syncdial luci-app-frpc ddns-scripts_aliyun ddns-scripts_dnspod"
-	
+		itdesk_default_packages="block-mount coremark kmod-nf-nathelper kmod-nf-nathelper-extra kmod-ipt-raw wget libustream-openssl ca-certificates default-settings luci luci-app-ddns luci-app-upnp luci-app-autoreboot luci-app-webadmin luci-app-serverchan luci-app-diskman luci-app-passwall luci-app-fileassistant luci-app-jd-dailybonus luci-app-wrtbwmon luci-app-filetransfer luci-app-vsftpd luci-app-ssr-plus luci-app-unblockmusic luci-app-arpbind luci-app-vlmcsd luci-app-wol luci-app-ramfree luci-app-sfe luci-app-nlbwmon luci-app-accesscontrol  luci-app-frpc luci-app-ttyd luci-app-netdata  ddns-scripts_aliyun ddns-scripts_dnspod #tr_ok "
 		lean_packages_nas="DEFAULT_PACKAGES.nas:=fdisk lsblk mdadm automount autosamba"	
 
-		lean_packages_router="DEFAULT_PACKAGES.router:=dnsmasq-full iptables ppp ppp-mod-pppoe firewall kmod-ipt-offload kmod-tcp-bbr"	
-		
-		#(DEFAULT_PACKAGES)
-		if [[ "$(grep -o "urngd" include/target.mk_back )" == "urngd" ]]; then
-			#19.7 and master (PACKAGES)
-			sed -i "s/DEFAULT_PACKAGES:=base-files libc libgcc busybox dropbear mtd uci opkg netifd fstools uclient-fetch logd urandom-seed urngd/$itdesk_default_packages/g"  include/target.mk
+		#修改target.mk
+		if [[ `grep -o "#tr_ok" include/target.mk | wc -l ` == "1" ]]; then
+			echo ""
 		else
-			#17.1 and 18.6 (PACKAGES)
-			sed -i "s/DEFAULT_PACKAGES:=base-files libc libgcc busybox dropbear mtd uci opkg netifd fstools uclient-fetch logd/$itdesk_default_packages/g"  include/target.mk
-		fi
+			#(DEFAULT_PACKAGES)
+			if [[ "$(grep -o "urngd" include/target.mk_back )" == "urngd" ]]; then
+				#19.7 and master (PACKAGES)
+				sed -i "s/urandom-seed urngd/urandom-seed urngd $itdesk_default_packages/g"  include/target.mk
+			else
+				#17.1 and 18.6 (PACKAGES)
+				sed -i "s/uclient-fetch logd/uclient-fetch logd $itdesk_default_packages/g"  include/target.mk
+			fi
 
-		#17.1-master (PACKAGES.nas)
-		sed -i "s/DEFAULT_PACKAGES.nas:=block-mount fdisk lsblk mdadm/$lean_packages_nas/g" include/target.mk
+			#17.1-master (PACKAGES.nas)
+			#sed -i "s/DEFAULT_PACKAGES.nas:=block-mount fdisk lsblk mdadm/$lean_packages_nas/g" include/target.mk	
+		fi	
 		
-		#(PACKAGES.router)
-		if [[ "$(grep -o "kmod-ipt-offload" include/target.mk_back )" == "kmod-ipt-offload" ]]; then
-			#18.6-master (PACKAGES.router)
-			sed -i "s/DEFAULT_PACKAGES.router:=dnsmasq iptables ip6tables ppp ppp-mod-pppoe firewall odhcpd-ipv6only odhcp6c kmod-ipt-offload/$lean_packages_router/g" include/target.mk
-
+		#x86_makefile
+		x86_makefile="partx-utils mkf2fs fdisk e2fsprogs wpad kmod-usb-hid kmod-mmc-spi kmod-sdhci kmod-ath5k kmod-ath9k kmod-ath9k-htc kmod-ath10k kmod-rt2800-usb kmod-e1000e kmod-igb kmod-igbvf kmod-ixgbe kmod-pcnet32 kmod-tulip kmod-vmxnet3 kmod-i40e kmod-i40evf kmod-r8125 kmod-8139cp kmod-8139too kmod-fs-f2fs kmod-sound-hda-core kmod-sound-hda-codec-realtek kmod-sound-hda-codec-via kmod-sound-via82xx kmod-sound-hda-intel kmod-sound-hda-codec-hdmi kmod-sound-i8x0 kmod-usb-audio kmod-usb-net kmod-usb-net-asix kmod-usb-net-asix-ax88179 kmod-usb-net-rtl8150 kmod-usb-net-rtl8152 kmod-r8168 kmod-mlx4-core kmod-mlx5-core kmod-drm-amdgpu ath10k-firmware-qca988x ath10k-firmware-qca9888 ath10k-firmware-qca9984 brcmfmac-firmware-43602a1-pcie htop lm-sensors  automount autosamba luci-app-frps luci-app-hd-idle luci-app-dockerman iperf iperf3 luci-app-ddns luci-app-sqm  ca-certificates #autocore"
+		FEATURES="squashfs vdi vmdk pcmcia fpu boot-part rootfs-part ext4 targz"
+		if [[ `grep -o "$x86_makefile" target/linux/x86/Makefile ` == "$x86_makefile" ]]; then
+			echo -e "$green x86_makefile配置已经修改，不做其他操作$white"
 		else
-		#17.1 (PACKAGES.router)
-			sed -i "s/DEFAULT_PACKAGES.router:=dnsmasq iptables ip6tables ppp ppp-mod-pppoe firewall odhcpd odhcp6c/$lean_packages_router/g" include/target.mk
-		fi		
+			sed -i "s/partx-utils mkf2fs e2fsprogs/$x86_makefile/g" target/linux/x86/Makefile
+		fi	
 			
 		#enable KERNEL_MIPS_FPU_EMULATOR
 		sed -i 's/default y if TARGET_pistachio/default y/g' config/Config-kernel.in
 			
 		#应用fullconenat
-		rm -rf package/network/config/firewall
-		svn checkout https://github.com/coolsnowwolf/lede/trunk/package/network/config/firewall package/network/config/firewall
+		#rm -rf package/network/config/firewall
+		#svn checkout https://github.com/coolsnowwolf/lede/trunk/package/network/config/firewall package/network/config/firewall
+
+		#docekr-ce
+		if [[ -e package/other-plugins/docker-ce ]]; then
+			rm -rf package/other-plugins/docker-ce
+			svn checkout https://github.com/coolsnowwolf/packages/trunk/utils/docker-ce  $HOME/$OW/$you_file/lede/package/other-plugins/docker-ce
+			cd $HOME/$OW/$you_file/lede/
+		else
+			svn checkout https://github.com/coolsnowwolf/packages/trunk/utils/docker-ce  $HOME/$OW/$you_file/lede/package/other-plugins/docker-ce
+		fi
+
+		#添加库
+		echo "src-git helloworld https://github.com/fw876/helloworld" >> feeds.conf.default && update_feeds
+		
 
 		#活动连接数
 		sed -i 's/16384/65536/g' package/kernel/linux/files/sysctl-nf-conntrack.conf
 
 		#删除lean_frp
-		rm -rf package/lean/frp
-		rm -rf package/lean/luci-app-frpc		
+		#rm -rf package/lean/frp
+		#rm -rf package/lean/luci-app-frpc		
 				
 		#取消官方源码强制https
 		sed -i '09s/\(.\{1\}\)/\#/' package/network/services/uhttpd/files/uhttpd.config
@@ -1196,11 +1355,12 @@ source_openwrt_Setting() {
 			echo ""
 		else
 			sed -i '31a\tools-y += ucl upx' tools/Makefile
-			svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/upx  $HOME/$OW/$file/lede/tools/upx
-			svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/ucl  $HOME/$OW/$file/lede/tools/ucl
+			svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/upx  $HOME/$OW/$you_file/lede/tools/upx
+			svn checkout https://github.com/coolsnowwolf/lede/trunk/tools/ucl  $HOME/$OW/$you_file/lede/tools/ucl
 			
 		fi 
-
+		echo "" > $HOME/$OW/$SF/tmp/source_branch
+		other_plugins
 		echo -e ">>$green openwrt官方源码配置优化完成$white"
 }
 
@@ -1210,13 +1370,13 @@ source_openwrt_Setting_18() {
 	Time
 
 	#修改x86启动等待时间成0秒(by:左右）
-	sed -i 's/default "5"/default "0"/g' $HOME/$OW/$file/lede/config/Config-images.in
+	sed -i 's/default "5"/default "0"/g' $HOME/$OW/$you_file/lede/config/Config-images.in
 
 	#去掉IPV6(by:左右）
-	sed -i 's/+IPV6:luci-proto-ipv6 //g' $HOME/$OW/$file/lede/feeds/luci/collections/luci/Makefile
+	sed -i 's/+IPV6:luci-proto-ipv6 //g' $HOME/$OW/$you_file/lede/feeds/luci/collections/luci/Makefile
 
 	#修改exfat支持(by:左右）
-	sed -i 's/+kmod-nls-base @BUILD_PATENTED/+kmod-nls-base/g' $HOME/$OW/$file/lede/feeds/packages/kernel/exfat-nofuse/Makefile
+	sed -i 's/+kmod-nls-base @BUILD_PATENTED/+kmod-nls-base/g' $HOME/$OW/$you_file/lede/feeds/packages/kernel/exfat-nofuse/Makefile
 
 	#修改KB成MB(by:左右）
 	sed -i 's/1024) + " <%:k/1048576) + " <%:M/g' feeds/luci/modules/luci-mod-admin-full/luasrc/view/admin_status/index.htm
@@ -1228,160 +1388,276 @@ source_openwrt_Setting_18() {
 }
 
 source_lean() {
-	source_type=`cat "$HOME/$OW/$SF/tmp/source_type"`
-	if [[ "$source_type" == "lean" ]]; then
+	source_type=`git remote show origin | grep "coolsnowwolf" | wc -l`
+	if [[ "$source_type" == "2" ]]; then
 		clear
 		echo -e ">>$green针对lean版本开始配置优化$white" && Time
 		
+		#添加helloworld库
+		echo "src-git helloworld https://github.com/fw876/helloworld" >> feeds.conf.default
+
+
 		#target.mk
+		target_mk="luci-app-serverchan luci-app-diskman luci-app-wrtbwmon luci-app-frpc luci-app-frps luci-app-wol luci-app-dockerman luci-theme-argon luci-app-passwall luci-app-fileassistant luci-app-ipsec-vpnd luci-app-ttyd  luci-app-vnstat luci-app-diag-core  luci-app-ssr-plus luci-app-turboacc  lm-sensors  openssh-sftp-server iperf iperf3 ipv6helper tc-tiny  fail2ban  smartmontools e2fsprogs luci-app-speedtest-web luci-app-wrtbwmon luci-app-bandix #tr_ok"
 		if [[ `grep -o "#tr_ok" include/target.mk | wc -l ` == "1" ]]; then
 			echo ""
 		else
-			sed -i "s/default-settings luci luci-proto-relay luci-app-ddns luci-app-sqm luci-app-upnp luci-app-adbyby-plus luci-app-autoreboot/default-settings luci luci-proto-relay luci-app-sqm luci-app-adbyby-plus luci-app-autoreboot/g" include/target.mk
+			sed -i "s/luci-app-autoreboot/luci-app-autoreboot $target_mk/g" include/target.mk
 
-		sed -i "s/luci-app-zerotier luci-app-arpbind luci-app-vlmcsd luci-app-wol luci-app-ramfree/luci-app-arpbind luci-app-vlmcsd luci-app-wol luci-app-ramfree/g" include/target.mk
-
-		sed -i "s/luci-app-sfe luci-app-flowoffload luci-app-nlbwmon luci-app-accesscontrol luci-app-cpufreq/luci-app-sfe luci-app-flowoffload luci-app-nlbwmon luci-app-accesscontrol luci-app-frpc luci-app-ttyd luci-app-watchcat  luci-app-netdata luci-app-syncdial luci-app-cpufreq  #tr_ok/g" include/target.mk
 		fi	
-		
-		
-		#x86_makefile
-		x86_makefile="luci-proto-bonding luci-app-aria2 luci-app-baidupcs-web luci-app-dockerman luci-app-frps luci-app-hd-idle luci-app-kodexplorer luci-app-minidlna ddns-scripts_aliyun ddns-scripts_dnspod ca-certificates"
-		if [[ `grep -o "$x86_makefile" target/linux/x86/Makefile ` == "$x86_makefile" ]]; then
-			echo -e "$green x86_makefile配置已经修改，不做其他操作$white"
-		else
-			sed -i "s/luci-app-zerotier luci-app-ipsec-vpnd luci-proto-bonding luci-app-unblockmusic luci-app-zerotier luci-app-xlnetacc ddns-scripts_aliyun ddns-scripts_dnspod ca-certificates/$x86_makefile/g" target/linux/x86/Makefile	
-		fi
 
-		#ipq806_makefile
-		ipq806_makefile="luci-app-aria2 luci-app-baidupcs-web  luci-app-wifischedule fdisk e2fsprogs ca-certificates"
-		if [[ `grep -o "$ipq806_makefile" target/linux/ipq806x/Makefile` == "$ipq806_makefile" ]]; then
-			echo -e "$green 配置已经修改，不做其他操作$white"
+		#修改X86默认固件大小
+		if [[ `grep -o "default 448" config/Config-images.in | wc -l` == "1" ]]; then
+			sed -i 's\default 448\default 1024\g' config/Config-images.in
+			#传统模式
+			grub_position=$(cat config/Config-images.in | grep -n "Build GRUB images" | awk  '{print $1}' | sed "s/://")
+			del_num=$(($grub_position + 4))
+			add_num=$(($grub_position + 3))
+			sed -i "$del_num d" config/Config-images.in
+			sed -i "$add_num a\default y" config/Config-images.in
 		else
-			sed -i "s/luci-app-ipsec-vpnd luci-app-unblockmusic luci-app-zerotier ca-certificates/$ipq806_makefile/g" target/linux/ipq806x/Makefile
-		fi
-		
-		#替换lean首页文件，添加天气代码(by:冷淡)
-		indexif=$(grep -o "Local Weather" feeds/luci/modules/luci-mod-admin-full/luasrc/view/admin_status/index.htm)
-		if [[ "$indexif" == "Local Weather" ]]; then
-			echo "已经替换首页文件"
-		else
-			rm -rf feeds/luci/modules/luci-mod-admin-full/luasrc/view/admin_status/index.htm
-			cp $HOME/$OW/$SF/$OCS/Warehouse/index_Weather/index.htm feeds/luci/modules/luci-mod-admin-full/luasrc/view/admin_status/index.htm
+			echo ""
 		fi
 	
-		x86indexif=$(grep -o "Local Weather" package/lean/autocore/files/index.htm)
+		#默认对x86首页下手，其他的你们安全了
+		x86indexif=$(grep -o "Local Weather" package/lean/autocore/files/x86/index.htm)
 		if [[ "$x86indexif" == "Local Weather" ]]; then
 			echo "已经替换X86首页文件"
 		else
-			rm -rf package/lean/autocore/files/index.htm
-			cp $HOME/$OW/$SF/$OCS/Warehouse/index_Weather/x86_index.htm package/lean/autocore/files/index.htm
+			rm -rf package/lean/autocore/files/x86/index.htm
+			cp $HOME/$OW/$SF/$OCS/Warehouse/index_Weather/x86_index.htm package/lean/autocore/files/x86/index.htm
 		fi
 	
-		base_zh_po_if=$(grep -o "#天气预报" feeds/luci/modules/luci-base/po/zh-cn/base.po)
+		base_zh_po_if=$(grep -o "#天气预报" feeds/luci/modules/luci-base/po/zh_Hans/base.po)
 		if [[ "$base_zh_po_if" == "#天气预报" ]]; then
 			echo "已添加天气预报翻译"
 		else
-			sed -i '$a \       ' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a #天气预报' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a msgid "Weather"' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a msgstr "天气"' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a \       ' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a msgid "Local Weather"' feeds/luci/modules/luci-base/po/zh-cn/base.po
-			sed -i '$a msgstr "本地天气"' feeds/luci/modules/luci-base/po/zh-cn/base.po
+			sed -i '$a \#天气预报\nmsgid "Weather"\nmsgstr "天气"\n\nmsgid "Local Weather"\nmsgstr "本地天气"\n ' feeds/luci/modules/luci-base/po/zh_Hans/base.po
 		fi
+
+		#首页显示编译时间
+		Compile_time_if=$(grep -o "#首页显示编译时间" feeds/luci/modules/luci-base/po/zh_Hans/base.po)
+		if [[ "$Compile_time_if" == "#首页显示编译时间" ]]; then
+			echo "已添加首页显示编译时间"
+		else
+			sed -i '$a \#首页显示编译时间\nmsgid "Compile_time"\nmsgstr "固件编译时间"\n' feeds/luci/modules/luci-base/po/zh_Hans/base.po
+			sed -i '$d' package/lean/default-settings/files/zzz-default-settings
+			sed -i '$d' package/lean/default-settings/files/zzz-default-settings
+			echo "echo \"`date "+%Y-%m-%d %H:%M"` (commit:`git log -1 --format=format:'%C(bold white)%h%C(reset)'`)\" >> /etc/Compile_time" >> package/lean/default-settings/files/zzz-default-settings
+			echo "exit 0" >> package/lean/default-settings/files/zzz-default-settings
+		fi
+
+:<<'COMMENT'
+		#修改x86内核
+		if [[ `grep -o "KERNEL_PATCHVER:=5.4" target/linux/x86/Makefile | wc -l` == "1" ]]; then
+			sed -i 's\KERNEL_PATCHVER:=5.4\KERNEL_PATCHVER:=4.19\g' target/linux/x86/Makefile
+			sed -i 's\KERNEL_TESTING_PATCHVER:=5.4\KERNEL_TESTING_PATCHVER:=4.19\g' target/linux/x86/Makefile
+		else
+			echo ""
+		fi
+COMMENT
+		#ipq806x_makefile
+		ipq806x_makefile="kmod-ath10k-ct wpad-openssl jd_openwrt_script"
+		#ipq806x_makefile="kmod-ath10k-ct wpad-openssl kmod-qca-nss-drv kmod-qca-nss-drv-qdisc kmod-qca-nss-ecm-standard kmod-qca-nss-gmac kmod-nss-ifb iptables-mod-physdev kmod-ipt-physdev kmod-qca-nss-drv-pppoe MAC80211_NSS_SUPPORT  luci-app-cpufreq jd_openwrt_script"
+		if [[ `grep -o "$ipq806x_makefile" target/linux/ipq806x/Makefile ` == "$ipq806x_makefile" ]]; then
+			echo -e "$green ipq806x_makefile配置已经修改，不做其他操作$white"
+		else
+			sed -i "s/kmod-ath10k-ct wpad-openssl/$ipq806x_makefile/g" target/linux/ipq806x/Makefile
+		fi
+
+
+		#rockchip_makefile
+		rockchip_makefile="luci-app-vsftpd ipv6helper autocore-arm jd_openwrt_script luci-app-frps luci-app-hd-idle luci-app-openvpn-server luci-app-ssrserver-python luci-app-transmission luci-app-zerotier wget"
+		if [[ `grep -o "$rockchip_makefile" target/linux/rockchip/Makefile ` == "$rockchip_makefile" ]]; then
+			echo -e "$green rockchip_makefile配置已经修改，不做其他操作$white"
+		else
+			sed -i "s/luci-app-zerotier/$rockchip_makefile/g" target/linux/rockchip/Makefile
+
+		fi
+
+		#修改网易云启用node.js
+		#sed -i "s/default n/default y/g" feeds/luci/applications/luci-app-unblockmusic/Makefile
+
+		#将diskman选项启用
+		sed -i "s/default n/default y/g" feeds/luci/applications/luci-app-diskman/Makefile
+
+		#下载插件
+		update_feeds
+		other_plugins
+
+		#删除这个，解决报错问题
+		rm -rf dl/go-mod-cache && rm -rf ./tmp
+		
+		echo -e ">>$green lean版本配置优化完成$white"
+
 	fi
-		echo -e ">>$green lean版本配置优化完成$white"	
+
 }
 
-source_lean_package() {
-	echo ""
-	echo -e ">>$green开始下载lean的软件库$white"
-	svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean  $HOME/$OW/$file/lede/package/lean
-	if [[ $? -eq 0 ]]; then
-		echo -e ">>$green下载lean的软件库完成$white"
-	else
-		clear	
-		echo "下载lean插件没有成功，重新执行代码" && Time
-		source_lean_package
-	fi
-}
+other_plugins() {
 
-source_lienol() {
-	source_type=`cat "$HOME/$OW/$SF/tmp/source_type"`
-	if [[ "$source_type" == "lienol" ]]; then
-		clear
-		echo -e ">>$green针对lienol版本开始配置优化$white" && Time
-		
-		if [[ -e $HOME/$OW/$file/lede/package/lean/luci-app-ttyd ]]; then
-			echo ""		
-		else
-			svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/luci-app-ttyd $HOME/$OW/$file/lede/package/lean/luci-app-ttyd
-		fi
-
-		./scripts/feeds install -a
-			
-		#lienol_target.mk
-		sed -i "s/luci-app-ddns/luci-app-sqm /g" include/target.mk
-		sed -i "s/luci-theme-bootstrap-mod/ /g" include/target.mk 
-		sed -i "s/luci-app-pptp-vpnserver-manyusers luci-app-pppoe-server luci-app-pppoe-relay/luci-app-adbyby-plus luci-app-autoreboot luci-app-frpc luci-app-ttyd luci-app-arpbind /g" include/target.mk
-		sed -i "s/ip6tables/ /g" include/target.mk
-		sed -i "s/odhcpd-ipv6only odhcp6c/ /g" include/target.mk
-		
-		#x86禁用gzip压缩		
-		sed -i "s/depends on TARGET_IMAGES_PAD || TARGET_ROOTFS_EXT4FS || TARGET_x86/depends on TARGET_IMAGES_PAD || TARGET_ROOTFS_EXT4FS #|| TARGET_x86/g" config/Config-images.in
-		
-		#lienol_x86_makefile
-		x86_makefile="luci-app-unblockmusic luci-app-transmission luci-app-aria2 luci-app-baidupcs-web  "
-		if [[ `grep -o "$x86_makefile" target/linux/x86/Makefile ` == "$x86_makefile" ]]; then
-			echo -e "$green x86_makefile配置已经修改，不做其他操作$white"
-		else
-			sed -i "s/luci-app-v2ray-server luci-app-trojan-server/$x86_makefile/g" target/linux/x86/Makefile	
-		fi
-
-		#lienol_ipq806_makefile
-		ipq806_makefile="uboot-envtools automount autosamba  luci-app-aria2 luci-app-baidupcs-web luci-app-unblockmusic luci-app-wifischedule fdisk e2fsprogs"
-		if [[ `grep -o "$ipq806_makefile" target/linux/ipq806x/Makefile  ` == "$ipq806_makefile" ]]; then
-			echo -e "$green 配置已经修改，不做其他操作$white"
-		else
-			sed -i "s/uboot-envtools/$ipq806_makefile/g" target/linux/ipq806x/Makefile
-		fi
-
-		echo -e ">>$green lean版本配置优化完成$white"	
-
-		#默认选上tj
-		trojanif=$(grep -o "#tjdefault n" feeds/lienol/lienol/luci-app-passwall/Makefile | wc -l)
-		if [[ "$trojanif" == "1" ]]; then
-			echo "Trojan设置完成"
-		else
-			sed -i '45s/\(.\{1\}\)/\#tj/' feeds/lienol/lienol/luci-app-passwall/Makefile
-			sed -i '45a\default y' feeds/lienol/lienol/luci-app-passwall/Makefile
-			sed -i "45s/^/        /" feeds/lienol/lienol/luci-app-passwall/Makefile
-			sed -i "46s/^/        /" feeds/lienol/lienol/luci-app-passwall/Makefile
-		fi
-
-		#更改passwall的dns
-		passwall_dns=$(grep -o "option up_china_dns '114.114.114.114'" feeds/lienol/lienol/luci-app-passwall/root/etc/config/passwall | wc -l)
-		if [[ "$passwall_dns" == "1" ]]; then
-			sed -i "s/option up_china_dns '114.114.114.114'/option up_china_dns '223.5.5.5'/g" feeds/lienol/lienol/luci-app-passwall/root/etc/config/passwall
-		fi
-	
-		#更改passwall显示位置
-		passwall_display=$(grep -o "vpn" feeds/lienol/lienol/luci-app-passwall/luasrc/controller/passwall.lua | wc -l)	
-		if [[ "$passwall_display" == "0" ]]; then
+		#other-plugins
+		if [[ -e package/other-plugins ]]; then
 			echo ""
 		else
-			sed -i "s/vpn/services/g" feeds/lienol/lienol/luci-app-passwall/luasrc/controller/passwall.lua
-			sed -i "s/VPN/services/g" feeds/lienol/lienol/luci-app-passwall/luasrc/controller/passwall.lua
-		fi	
+			mkdir package/other-plugins
+		fi
 
 
+#需要删除的前置
+
+		#采用lisaac的luci-app-dockerman
+		if [[ -e package/lean/luci-app-dockerman ]]; then
+			rm -rf package/lean/luci-app-dockerman
+		fi
+			
+
+#中部
+
+cat >/tmp/other-plugins.txt <<EOF
+	luci-app-wrtbwmon	https://github.com/brvphoenix/luci-app-wrtbwmon.git
+	openwrt-wrtbwmon		https://github.com/brvphoenix/wrtbwmon.git
+	luci-app-speedtest-web	https://github.com/ZeaKyX/luci-app-speedtest-web.git
+	openwrt-speedtest		https://github.com/ZeaKyX/speedtest-web.git
+	luci-app-bandix		https://github.com/timsaya/luci-app-bandix.git
+	openwrt-bandix		https://github.com/timsaya/openwrt-bandix.git
+	luci-app-dockerman	https://github.com/lisaac/luci-app-dockerman.git
+	luci-app-serverchan	https://github.com/tty228/luci-app-serverchan.git
+	#luci-app-adguardhome1	https://github.com/kongfl888/luci-app-adguardhome.git
+	luci-app-godproxy	https://github.com/project-lede/luci-app-godproxy.git
+	openwrt-passwall_luci	https://github.com/xiaorouji/openwrt-passwall.git
+	openwrt-passwall-packages	https://github.com/xiaorouji/openwrt-passwall-packages.git
+	jd_openwrt_script	https://github.com/xdhgsq/xdh_plug.git
+EOF
+	
+for plugins_name in `cat /tmp/other-plugins.txt | awk '{print $1}' | grep -v "#"`
+do {
+	if [[ -e package/other-plugins/${plugins_name} ]]; then
+		cd  package/other-plugins/${plugins_name}
+		source_branch=$(git branch | sed "s/*//g" | sed "s/ //g")
+		source_update_No_git_pull
+		cd $HOME/$OW/$you_file/lede/
+	else
+		git_url=$(cat /tmp/other-plugins.txt | grep "${plugins_name}" | awk '{print $2}')
+		git clone ${git_url} package/other-plugins/${plugins_name}
 	fi
+}&
+done
+wait
+
+
+#需要调整的后部
+		#采用lisaac的luci-app-dockerman
+		if [[ -e package/other-plugins/luci-app-dockerman ]]; then
+			sed -i "s/+ttyd//g" package/other-plugins/luci-app-dockerman/applications/luci-app-dockerman/Makefile
+		fi
+
+		
+		#openwrt-passwall插件默认选上其他参数
+		if [[ -e package/other-plugins/openwrt-passwall_luci ]]; then
+			cat >/tmp/passwall_luci_set <<EOF
+				NaiveProxy
+				tuic-client
+				Hysteria
+EOF
+
+			passwall_dir="package/other-plugins/openwrt-passwall_luci/luci-app-passwall/Makefile"
+			for i in `cat /tmp/passwall_luci_set`
+			do
+				Rows=$(grep -n "Include $i"  $passwall_dir | awk -F ":" '{print $1}')
+				Rows1=$(($Rows + 1))
+				Rows_left="1"
+				while [[ ${Rows_left} -gt 0 ]]; do
+					Rows1_if=$(sed -n "${Rows1}p" $passwall_dir | grep -o "default n" | wc -l)
+					if [ ${Rows1_if} == "1" ];then
+						sed -i "$Rows1 d" $passwall_dir
+						sed -i "$Rows a\	default y" $passwall_dir
+						Rows_left=$(($Rows_left -1))
+					else
+						Rows1=$(($Rows1 + 1))
+					fi
+				done
+			done
+		fi
+
+		#luci-app-ssr-plus插件默认选上其他参数
+		if [[ -e feeds/helloworld/luci-app-ssr-plus ]]; then
+			cat >/tmp/helloworld_set <<EOF
+				IPT2Socks
+				Kcptun
+				NaiveProxy
+				Redsocks2
+				Trojan
+				Tuic-Client
+				Shadow-TLS
+				Hysteria
+EOF
+			helloworld_dir="feeds/helloworld/luci-app-ssr-plus/Makefile"
+			for i in `cat /tmp/helloworld_set`
+			do
+				Rows=$(grep -n "Include $i"  $helloworld_dir | awk -F ":" '{print $1}')
+				Rows1=$(($Rows + 1))
+				Rows_left="1"
+				while [[ ${Rows_left} -gt 0 ]]; do
+					Rows1_if=$(sed -n "${Rows1}p" $helloworld_dir | grep -o "default n" | wc -l)
+					if [ ${Rows1_if} == "1" ];then
+						sed -i "$Rows1 d" $helloworld_dir
+						sed -i "$Rows a\	default y" $helloworld_dir
+						Rows_left=$(($Rows_left -1))
+					else
+						Rows1=$(($Rows1 + 1))
+					fi
+				done
+			done
+		fi
+
+		#node.js
+		node_if=$(grep "https://github.com/nxhack/openwrt-node-packages.git" feeds.conf.default | wc -l)
+		if [[  "$node_if" == "0" ]];then
+			echo "src-git node https://github.com/nxhack/openwrt-node-packages.git" >>feeds.conf.default
+			./scripts/feeds update node
+			rm ./package/feeds/packages/node
+			rm ./package/feeds/packages/node-*
+			./scripts/feeds install -a -p node
+		fi
+
+:<<"no_print"
+		#下载luci-app-ssr-plus
+		if [[ -e package/other-plugins/luci-app-ssr-plus ]]; then
+			rm -rf   package/other-plugins/luci-app-ssr-plus
+			svn checkout https://github.com/fw876/helloworld/trunk/luci-app-ssr-plus package/other-plugins/luci-app-ssr-plus
+			svn checkout https://github.com/fw876/helloworld/trunk/lua-neturl package/other-plugins/lua-neturl
+			svn checkout https://github.com/fw876/helloworld/trunk/shadow-tls package/other-plugins/shadow-tls
+			svn checkout https://github.com/fw876/helloworld/trunk/redsocks2 package/other-plugins/redsocks2
+		else
+			svn checkout https://github.com/fw876/helloworld/trunk/luci-app-ssr-plus package/other-plugins/luci-app-ssr-plus
+			svn checkout https://github.com/fw876/helloworld/trunk/lua-neturl package/other-plugins/lua-neturl
+			svn checkout https://github.com/fw876/helloworld/trunk/shadow-tls package/other-plugins/shadow-tls
+			svn checkout https://github.com/fw876/helloworld/trunk/redsocks2 package/other-plugins/redsocks2
+		fi
+
+		#frp修改
+		sed -i "s/0.51.3/0.49.0/g"  ./feeds/packages/net/frp/Makefile
+		sed -i "s/83032399773901348c660d41c967530e794ab58172ccd070db89d5e50d915fef/8ff92d4f763d596bee35efe17f0729d36e584b93c49a7671cebde4bb318b458f/g" ./feeds/packages/net/frp/Makefile
+	
+
+		#将golang退回1.20
+		if [ -f golang.zip ];then
+			rm -rf ./feeds/packages/lang/golang/*
+			unzip golang.zip -d ./feeds/packages/lang/golang
+			./scripts/feeds install -a -p golang
+		else
+			wget https://github.com/xiaorouji/openwrt-passwall/files/12568587/golang.zip
+			rm -rf ./feeds/packages/lang/golang/*
+			unzip golang.zip -d ./feeds/packages/lang/golang
+			./scripts/feeds install -a -p golang
+		fi
+no_print
+		update_feeds
 }
 
 #Public配置
 source_Setting_Public() {
-	clear
 	echo -e ">>$green Public配置$white" 
 	#隐藏首页显示用户名(by:kokang)
 	sed -i 's/name="luci_username" value="<%=duser%>"/name="luci_username"/g' feeds/luci/modules/luci-base/luasrc/view/sysauth.htm
@@ -1392,47 +1668,14 @@ source_Setting_Public() {
 	#修改固件生成名字,增加当天日期(by:左右）
 	sed -i 's/IMG_PREFIX:=$(VERSION_DIST_SANITIZED)/IMG_PREFIX:=[$(shell date +%Y%m%d)]-$(VERSION_DIST_SANITIZED)/g' include/image.mk
 
-	#frpc替换为27版本
-	source_type=`cat "$HOME/$OW/$SF/tmp/source_type"`
-	if [[ `echo "$source_type" | grep openwrt | wc -l` == "1" ]]; then
-		sed -i "s/PKG_VERSION:=0.31.2/PKG_VERSION:=0.27.0/g" feeds/packages/net/frp/Makefile
-	elif [[ `echo "$source_type" | grep lean | wc -l` == "1" ]]; then
-		sed -i "s/PKG_VERSION:=0.32.0/PKG_VERSION:=0.27.0/g" package/lean/frp/Makefile
-		sed -i "s/PKG_HASH:=39162780b28c0019207d83919530b573fac0bef8df30f1b6a5860886b0616c67/PKG_HASH:=5d2efd5d924c7a7f84a9f2838de6ab9b7d5ca070ab243edd404a5ca80237607c/g" package/lean/frp/Makefile
-	else
-		echo ""
-	fi
+	sed -i "s/*\/\$time \* /0 *\/2 /g" feeds/luci/applications/luci-app-frpc/root/etc/init.d/frp
 
-:<<'COMMENT'
-	#默认选上v2
-	v2if=$(grep -o "#v2default y if x86_64" package/lean/luci-app-ssr-plus/Makefile | wc -l)
-	
-	if [[ "$v2if" == "1" ]]; then
-		echo "v2设置完成"
-	else
-		sed -i '26s/\(.\{1\}\)/\#v2/' package/lean/luci-app-ssr-plus/Makefile
-		sed -i '26a\default y' package/lean/luci-app-ssr-plus/Makefile
-		sed -i "26s/^/        /" package/lean/luci-app-ssr-plus/Makefile
-		sed -i "27s/^/        /" package/lean/luci-app-ssr-plus/Makefile
-	fi
-
-	trojanif=$(grep -o "#tjdefault y if x86_64" package/lean/luci-app-ssr-plus/Makefile | wc -l)
-	if [[ "$trojanif" == "1" ]]; then
-		echo "Trojan设置完成"
-	else
-		sed -i '31s/\(.\{1\}\)/\#tj/' package/lean/luci-app-ssr-plus/Makefile
-		sed -i '31a\default y' package/lean/luci-app-ssr-plus/Makefile
-		sed -i "31s/^/        /" package/lean/luci-app-ssr-plus/Makefile
-		sed -i "32s/^/        /" package/lean/luci-app-ssr-plus/Makefile
-	fi
-COMMENT
 	echo -e ">>$green Public配置完成$white"	
 }
 
 update_feeds() {
-	clear
 	echo "---------------------------"
-	echo "      更新Feeds代码"
+	echo -e "      $green更新Feeds代码$white"
 	echo "---------------------------"
 	./scripts/feeds update -a && ./scripts/feeds install -a
 	if [[ $? -eq 0 ]]; then
@@ -1449,28 +1692,26 @@ make_defconfig() {
 	echo "---------------------------"
 	echo ""
 	echo ""
-	echo "       测试编译环境"
+	echo -e "       $green测试编译环境$white"
 	echo ""
 	echo ""
 	echo "--------------------------"
 		make defconfig
-		Time
-		ecc
 }
 
 dl_download() {
 	#检测dl包完整性(by:P3TERX)
-	if [[ -e $HOME/$OW/$file/lede/dl ]]; then
-		cd $HOME/$OW/$file/lede/dl
+	if [[ -e $HOME/$OW/$you_file/lede/dl ]]; then
+		cd $HOME/$OW/$you_file/lede/dl
 		find . -size -1024c -exec ls -l {} \;
        	 	find . -size -1024c -exec rm -f {} \;
-		cd $HOME/$OW/$file/lede
+		cd $HOME/$OW/$you_file/lede
 	else
 		echo ""
 	fi
 	clear
 	echo "----------------------------------------------"
-	echo "# 开始下载DL，如果出现下载很慢，请检查你的梯子 #"
+	echo -e "$green# 开始下载DL，如果出现下载很慢，请检查你的梯子 #$white"
 	echo ""
 	echo -e "$green你的CPU核数为：$cpu_cores $white"
 	echo -e "$yellow自动执行make download -j$cpu_cores  V=s加快下载速度$white"
@@ -1479,14 +1720,19 @@ dl_download() {
 	echo "----------------------------------------------"
 	Time	
 	make download -j$cpu_cores V=s
-	dl_error
+	if [[ $? -eq 0 ]]; then
+		echo ""
+	else
+		dl_error
+	fi
+
 }
 
 dl_error() {
 	echo "----------------------------------------"
-	echo "请检查上面有没有error出现，如果有请重新下载"
-	echo " 1.有"
-	echo " 2.没有"
+	echo -e " $yellow你的dl下载报错了$white"
+	echo " 1.重新下载"
+	echo " 2.不理直接编译"
 	echo "----------------------------------------"
 	read -p "请输入你的决定：" dl_dw
 	case "$dl_dw" in
@@ -1507,7 +1753,7 @@ ecc() {
 	clear
 	echo "    -----------------------------------------------"
 	echo ""
-	echo "		【××编译环境搭建成功××】"
+	echo -e "		$green【××编译环境搭建成功××】$white"
 	echo ""
 	echo "	  1.请回车进入编译菜单，第一次回车较慢稍等"
 	echo "	  2.进去编译菜单选择你要的功能完成以后Save"
@@ -1518,8 +1764,9 @@ ecc() {
 	read a
 	make menuconfig
 	if [[ $? -eq 0 ]]; then
-		Save_My_Config_luci
-		make_firmware_or_plugin
+		#Save_My_Config_luci
+		#make_firmware_or_plugin
+		make_compile_firmware
 	else
 		echo ""
 		echo -e "$redError，请查看上面报错，回车重新执行命令$white"
@@ -1530,11 +1777,12 @@ ecc() {
 
 make_firmware_or_plugin() {
 	clear
-	starttime=`date +'%Y-%m-%d %H:%M:%S'`
+	calculating_time_start
 	echo "----------------------------------------"
 	echo "请选择编译固件 OR 编译插件"
 	echo " 1.编译固件"
 	echo " 2.编译插件"
+	echo " 3.回退到加载配置选项（可以重新选择你的配置）"
 	echo "----------------------------------------"
 	read -p "请输入你的决定：" mk_value
 	case "$mk_value" in
@@ -1543,6 +1791,9 @@ make_firmware_or_plugin() {
 		;;
 		2)
 		make_Compile_plugin
+		;;
+		3)
+		source_config
 		;;
 		*)
 		clear && echo  "Error请输入正确的数字 [1-2]" && Time
@@ -1554,54 +1805,92 @@ make_firmware_or_plugin() {
 }
 
 make_compile_firmware() {
+	rm -rf /tmp/compile.log
+	calculating_time_start
 	clear
 	echo "--------------------------------------------------------"
-	echo  "++编译固件是否要使用多线程编译++"
+	echo -e "$green++编译固件是否要使用多线程编译++$white"
 	echo ""
 	echo "  首次编译不建议-j，具体用几线程看你电脑j有机会编译失败,"
 	echo "不懂回车默认运行make V=s"
 	echo ""
-	echo -e "多线程例子：$yellow make -j4 V=s$white"
 	echo -e "温馨提醒你的cpu核心数为：$green $cpu_cores $white"
+	echo -e "可用多线程例子：$yellow make -j$cpu_cores V=s $white(黄色字体这段完整的输进去)"
+	echo ""
+	echo -e "$red!!!请不要在输入参数这行直接输数字，把命令敲全，不懂就直接回车!!!$white"
 	echo "--------------------------------------------------------"
 	read  -p "请输入你的参数(回车默认：make V=s)：" mk_f
-	if [[ -z "$mk_f" ]];then
+	if [[ -z $mk_f ]];then
 		clear && echo "开始执行编译" && Time
-		make V=s
+		dl_download
+		make V=s >>/tmp/compile.log &
+		tail -f /tmp/compile.log &
 	else
 		dl_download
 		clear
-		echo -e "你输入的线程是：$green$mk_f$white"
+		echo -e "你输入的命令是：$green$mk_f$white"
 		echo "准备开始执行编译" && Time
-		$mk_f
+		$mk_f >>/tmp/compile.log &
+		tail -f /tmp/compile.log &
 	fi
 	
-	endtime=`date +'%Y-%m-%d %H:%M:%S'`
-	start_seconds=$(date --date="$starttime" +%s);
-	end_seconds=$(date --date="$endtime" +%s);
-	echo "本次运行时间： "$((end_seconds-start_seconds))"s"
-   	if_wo
+	if_make
+}
+
+if_make() {
+	#set -x
+	if [[ `cat /tmp/compile.log |grep "make\[1\]: Leaving directory" | wc -l` == "1" ]];then
+		kill_tail=$(ps -an | grep tail | grep -v grep | awk '{print $1}')
+		kill -9 $kill_tail
+		if_wo
+		calculating_time_end
+	else
+		if [[ `cat /tmp/compile.log |grep "make\: \*\*\* \[world\] Error 2" | wc -l ` == "1" ]]; then
+			kill_tail=$(ps -an | grep tail | grep -v grep | awk '{print $1}')
+			kill -9 $kill_tail
+			echo -e "$red>> 固件编译失败，请查询上面报错代码$white"
+			make_continue_to_compile
+		else
+			sleep 2
+			if_make
+		fi
+	fi
+
 	#by：BoomLee  ITdesk
 }
 
 if_wo() {
-	#复制编译好的固件过去
-        workspace_if=`echo $HOME | grep workspace | wc -l `
-    	if [[ "$workspace_if" == "1" ]]; then
-		da=`date +%Y%m%d`
-		HOME=`echo "$THEIA_WORKSPACE_ROOT"`
-       		source_type=`cat $HOME/$OW/$SF/tmp/source_type`
-        	you_file=`cat $HOME/$OW/$SF/tmp/you_file`
-		if [[ -e $HOME/bin ]]; then
-			echo ""
-		else
-			mkdir -p $HOME/bin
-        fi
-        	cd && cd $HOME
-		\cp -rf $HOME/$OW/$you_file/lede/bin/targets/  $HOME/bin/$da-$source_type
-		echo -e "本次编译完成的固件已经copy到$green $HOME/bin/$da-$source_type $white"
-        fi
+	if [[ $? -eq 0 ]]; then
+		#复制编译好的固件过去
+		workspace_if=`echo $HOME | grep workspace | wc -l `
+		if [[ "$workspace_if" == "1" ]]; then
+			da=`date +%Y%m%d`
+			HOME=`echo "$THEIA_WORKSPACE_ROOT"`
+			source_type=`cat $HOME/$OW/$SF/tmp/source_type`
+			you_file=`cat $HOME/$OW/$SF/tmp/you_file`
+
+			if [[ -e $HOME/bin ]]; then
+				echo ""
+			else
+				mkdir -p $HOME/bin
+			fi
+
+			cd && cd $HOME
+			\cp -rf $HOME/$OW/$you_file/lede/bin/targets/  $HOME/bin/$da-$source_type
+			echo -e "本次编译完成的固件已经copy到$green $HOME/bin/$da-$source_type $white"
+		fi
+	else
+		echo "---------------------------------------------------"
+		echo -e "$red>> 固件编译失败，请查看报错代码$white"
+			cat /tmp/compile.log | grep -E "ERROR/|failed"
+		echo -e "$yellow >>更多编译过程可以查看　$green/tmp/compile.log$yellow　方便你查看错误发生过程"
+		echo ----------------------------------------------------
+
+		make_continue_to_compile
+	fi
 }
+
+
 
 make_Compile_plugin() {
 	clear
@@ -1617,21 +1906,24 @@ make_Compile_plugin() {
 		echo -e "你输入的参数是：$green$mk_p$white"
 		echo "准备开始执行编译" && Time
 		$mk_p
-	echo ""
-	echo "" 
-	echo "---------------------------------------------------------------------"
-	echo ""
-	echo -e "  潘多拉编译完成的插件在$yellow/Openwrt/文件名/lede/bin/packages/你的平台/base$white,如果还是找不到的话，看下有没有报错，善用搜索 "
-	echo ""
-	echo "回车可以继续编译插件，或者Ctrl + c终止操作"
-	echo ""
-	echo "---------------------------------------------------------------------"	
-	read a
-	make_Continue_compiling_the_plugin
-	endtime=`date +'%Y-%m-%d %H:%M:%S'`
-	start_seconds=$(date --date="$starttime" +%s);
-	end_seconds=$(date --date="$endtime" +%s);
-	echo "本次运行时间： "$((end_seconds-start_seconds))"s"
+	
+	if [[ $? -eq 0 ]]; then
+		echo ""
+		echo ""
+		echo "---------------------------------------------------------------------"
+		echo ""
+		echo -e "  潘多拉编译完成的插件在$yellow/Openwrt/文件名/lede/bin/packages/你的平台/base$white,如果还是找不到的话，看下有没有报错，善用搜索 "
+		echo ""
+		echo "回车可以继续编译插件，或者Ctrl + c终止操作"
+		echo ""
+		echo "---------------------------------------------------------------------"
+			read a
+			make_Continue_compiling_the_plugin
+			calculating_time_end
+		else
+			echo -e "$red>> 固件编译失败，请查询上面报错代码$white"
+			make_continue_to_compile
+		fi
 	#by：BoomLee  ITdesk
 }
 
@@ -1648,7 +1940,7 @@ make_Continue_compiling_the_plugin() {
 		make_Compile_plugin
 		;;
 		2)
-		echo ""
+		exit
 		;;
 		*)
 		clear && echo  "Error请输入正确的数字 [1-2]" && Time
@@ -1657,6 +1949,274 @@ make_Continue_compiling_the_plugin() {
 	esac
 }
 
-description_if
+make_continue_to_compile() {
+	echo "---------------------------------------------------------------------"
+	echo -e "你的编译出错了是否要继续编译"
+	echo ""
+	echo -e "$green 1.是（默认执行make clean && make V=s,以方便查出具体报错问题）$white"
+	echo ""
+	echo -e "$red 2.否 （直接退出脚本）$white"
+	echo ""
+	echo -e "$yellow温馨提醒，编译失败一般有以下几种可能$white"
+	echo "1. 网络（需要科学上网）"
+	echo "2. Dl库没有下载完整（跟网络很大关系）"
+	echo "3. -j 多线程编译"
+	echo "4. 内存太少，在－ｊ的时候容易报错"
+	echo "5. 空间不足（至少４０Ｇ空间）"
+	echo "---------------------------------------------------------------------"
+	read  -p "请输入你的决定:" continue_to_compile
+		case "$continue_to_compile" in
+		1)
+		cd $HOME/$OW/$you_file/lede
+		make clean && make V=s
+		#make_firmware_or_plugin
+		;;
+		2)
+		exit
+		;;
+		*)
+		clear && echo  "Error请输入正确的数字 [1-2]" && Time
+		clear && make_continue_to_compile
+		;;
+	esac
+}
 
+#单独的命令模块
+make_j() {
+	make_compile_firmware
+	#dl_download
+	#calculating_time_start
+	#make -j$(nproc) V=s
+	#calculating_time_end
+	#n1_builder
+}
+
+new_source_make() {
+	system_install
+}
+
+clean_make() {
+	clear &&echo -e "$green>>执行make clean$white"
+	make clean
+	noclean_make
+}
+
+noclean_make() {
+	clear && echo -e "$green>>不执行make clean$white"
+	source_config && make menuconfig && make_j
+}
+
+update_clean_make() {
+	clear
+	cd $HOME/$OW/$you_file/lede
+	file_patch="$HOME/$OW/$you_file/lede"
+	echo -e "$green>>文件夹:$yellow$file_patch$green 执行make clean$white" && sleep 3
+		make clean && rm -rf .config && rm -rf ./tmp/ && rm -rf ./feeds
+	echo -e "$green>>文件夹:$yellow$file_patch$green 执行git pull$white" && sleep 3
+		source_update_No_git_pull
+	echo -e "$green>>文件夹:$yellow$file_patch$green 执行常用设置$white"　&& sleep 3
+		source_download_ok
+	echo -e "$green>>文件夹:$yellow$file_patch$green 执行make menuconfig $white"　&& sleep 3
+		if [ "$action3" == "auto" ];then
+			echo -e "$green>检测到$yellow$action3$green，开始自动运行编译$white" && sleep 3
+		else
+			make menuconfig
+		fi
+	echo -e "$green>>文件夹:$yellow$file_patch$green 执行make download 和make -j $white"　&& sleep 3
+		if [ "$action3" == "auto" ];then
+			make -j${cpu_cores} V=s
+		else
+			make_j
+		fi
+	if [[ $? -eq 0 ]]; then
+		echo ""
+	else
+		echo -e "$red>>文件夹:$action1 编译失败了，请检查上面的报错，然后重新进行编译 $white"
+		echo ""
+		echo -e "$green 可以采用以下命令重新进行编译"
+		echo -e "$green bash \$openwrt $action1 make_j "
+	fi
+}
+
+update_clean_make_kernel() {
+	update_clean_make
+	make kernel_menuconfig
+	make_j
+}
+
+update_script_rely() {
+	update_script
+	rely_on
+	if [[ $? -eq 0 ]]; then
+		echo -e "$green >>依赖安装完成 $white" && Time
+	else
+		clear
+		echo -e "$red 依赖没有更新或安装成功，重新执行代码 $white" && Time
+		update_script_rely
+	fi
+}
+
+actions_openwrt() {
+	HOME=$(pwd)
+	file=lean
+	if [[ ! -d "$HOME/$OW/$SF/$OCS" ]]; then
+		echo -e "开始创建主文件夹"
+		mkdir -p $HOME/$OW/$SF/dl
+		mkdir -p $HOME/$OW/$SF/My_config
+		mkdir -p $HOME/$OW/$SF/tmp
+	fi
+
+	echo "开始创建编译文件夹"
+	mkdir $HOME/$OW/$you_file
+	git clone  https://github.com/coolsnowwolf/lede.git $HOME/$OW/$you_file/lede
+	cd $HOME/$OW/$you_file/lede
+	source_download_ok
+	make_j
+}
+
+file_help() {
+	echo "---------------------------------------------------------------------"
+	echo "	【 Openwrt Compile Script编译脚本 Ver ${version}版 】"
+	echo "	 By:ITdesk"
+	echo "---------------------------------------------------------------------"
+	echo ""
+	echo -e "$green用法: bash \$openwrt [文件夹] [命令] $white"
+	echo -e "$green脚本创建文件夹目录结构：$HOME/$OW/$yellow你起的文件夹名$green/lede $white"
+	echo ""
+	echo -e "$yellow首次编译建议：$white"
+	echo -e "$green   new_source_make $white   脚本新建一个文件夹下载你需要的源码并进行编译 "
+	echo ""
+	echo -e "$yellow二次编译建议：$white"
+	#echo -e "$green   make_j $white            执行make download 和make -j V=s "
+	echo -e "$green   noclean_make $white      不执行make clean清理一下源码然后再进行编译"
+	echo -e "$green   clean_make $white        执行make clean清理一下源码然后再进行编译"
+	echo -e "$green   update_clean_make $white 执行make clean 并同步最新的源码 再进行编译"
+	#echo -e "$green   update_clean_make_kernel $white 编译完成以后执行make kernel_menuconfig($red危险操作$white)"
+	echo -e "$green   update_script $white     将脚本同步到最新"
+	echo -e "$green   update_script_rely $white将脚本和源码依赖同步到最新"
+	#echo -e "$green   help $white 查看帮助"
+	echo ""
+	echo -e "$yellow例子： $white "
+	echo -e "$yellow  1.新建一个文件夹下载你需要的源码并进行编译(适合首次编译) $white "
+	echo -e "$green   bash \$openwrt new_source_make $white  "
+	echo ""
+	echo -e "$yellow  2.不执行clean,执行make download 和make -j V=s(适合二次编译) $white  "
+	echo -e "$green   bash \$openwrt $yellow你起的文件夹名$green  noclean_make $white "
+	echo ""
+	echo -e "$yellow  3.清理编译文件，再重新编译(适合二次编译) $white  "
+	echo -e "$green   bash \$openwrt $yellow你起的文件夹名$green  clean_make $white   "
+	echo ""
+	echo -e "$yellow  4.同步最新的源码清理编译文件再编译(适合二次编译) $white"
+	echo -e "$green   bash \$openwrt $yellow你起的文件夹名$green  update_clean_make $white "
+	echo ""
+	echo -e "$green   bash \$openwrt help $white  查看帮助  "
+	echo -e "$green   bash \$openwrt update_script $white  将脚本同步到最新  "
+	echo ""
+	echo "---------------------------------------------------------------------"
+
+}
+
+action1_if() {
+		if [[ -e $HOME/$OW/$action1 ]]; then
+			action2_if
+		else
+			echo ""
+			echo -e "$red>>文件夹不存在，使用方法参考以下！！！$white"
+			file_help
+		fi
+}
+
+action2_if() {
+	if [[ -z $action2 ]]; then
+		echo ""
+		echo -e "$red>>命令参数不能为空！$white"
+		file_help
+	else
+		you_file=$action1
+		cd $HOME/$OW/$you_file/lede
+		rm -rf $HOME/$OW/$SF/tmp/*
+		case "$action2" in
+			other_plugins|make_j|new_source_make|clean_make|noclean_make|update_clean_make|update_clean_make_kernel|update_script_rely|n1_builder)
+			$action2
+			action3_if
+			;;
+			*)
+			echo ""
+			echo -e "$red 命令不存在，使用方法参考以下！！！$white"
+			file_help
+			;;
+		esac
+	fi
+}
+
+action3_if() {
+	if [[ -z $action3 ]]; then
+		echo ""
+	else
+		you_file=$action1
+		cd $HOME/$OW/$you_file/lede
+		rm -rf $HOME/$OW/$SF/tmp/*
+		case "$action3" in
+			other_plugins|make_j|new_source_make|clean_make|noclean_make|update_clean_make|update_clean_make_kernel|update_script_rely|n1_builder)
+			$action3
+			;;
+			auto)
+			echo ""
+			;;
+			*)
+			echo ""
+			echo -e "$red 命令不存在，使用方法参考以下！！！$white"
+			file_help
+			;;
+		esac
+	fi
+}
+
+
+if [[ $(users) == "root" ]];then
+	echo -e "${red}请勿使用root进行编译！！！${white}"
+	exit 0
+fi
+
+cd $shfile
+git_branch=$(git fetch --all | git branch -v| grep -o "落后")
+if [[  "$git_branch" == "落后" ]]; then
+	echo -e "$yellow>>当前你的脚本不是最新$white"　
+	echo -e "$yellow开始更新到最新版本。。。$white"&& sleep 3
+	update_script
+else
+	echo -e "$green脚本已经最新$white" && sleep 2
+fi
+
+
+
+#copy  by:Toyo  modify:ITdesk
+action1="$1"
+action2="$2"
+action3="$3"
+
+
+
+if [[ -z $action1 ]]; then
+	description_if
+	file_help
+else
+	case "$action1" in
+		help)
+		file_help
+		;;
+		update_script)
+		update_script
+		;;
+		new_source_make)
+		new_source_make
+		;;
+		actions_openwrt)
+		actions_openwrt
+		;;
+		*)
+		action1_if
+		;;
+	esac
+fi
 

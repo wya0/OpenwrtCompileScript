@@ -1,6 +1,7 @@
 # OpenwrtCompileScript
 
-![CompileScript](doc/CompileScript.PNG) 
+![Command_Line](doc/Command_Line.PNG)
+
 ## 序言
 
 用于辅助Openwrt编译，但不会帮你完成整个编译过程，需要一点Openwrt编译基础
@@ -20,9 +21,18 @@ The script is made to work on these OS :
 - Ubuntu 16.4
 - Ubuntu 18.4 （首选，脚本基于此版本编写测试）
 - win10子系统（ubuntu 18.04 LTS）
-- Github Gitpod云编译(参考：https://www.right.com.cn/forum/thread-1573038-1-1.html)
+- Deepin 15.11桌面版（群友测试ok）
+
+## 脚本使用教程
+
+**脚本视频教程加群** :**667491026**   （**拒绝大爷公子伸手党**)
+
+**脚本问题反馈** ：https://github.com/openwrtcompileshell/OpenwrtCompileScript/issues 或者加群反馈
+
 
 ## Usage 使用方法
+**请勿使用Root进行编译！！！**
+
 
 1、使用git克隆下载脚本并赋予执行权限
 
@@ -37,17 +47,71 @@ git clone https://github.com/openwrtcompileshell/OpenwrtCompileScript.git && chm
 cd OpenwrtCompileScript && bash openwrt.sh
 ```
 
-**注意**:执行脚本后会自动添加系统变量，第二次可使用如下命令运行脚本。
+**注意**:执行脚本后会自动添加系统变量，第二次可使用如下命令运行脚本。(如果不行，请重启的你的Linux)
 
 `bash $openwrt`
 
-### 脚本详细使用方法
+## 命令行调用脚本
+```bash
+用法: bash $openwrt [文件夹] [命令] 
+脚本创建文件夹目录结构：/home/zhang/Openwrt/你起的文件夹名/lede 
 
-https://www.right.com.cn/forum/thread-345378-1-1.html
+首次编译建议：
+   new_source_make    脚本新建一个文件夹下载你需要的源码并进行编译 
 
-交流技术适当吹水群：667491026   （**拒绝大爷公子伸手党**)
+二次编译建议：
+   noclean_make       不执行make clean清理一下源码然后再进行编译
+   clean_make         执行make clean清理一下源码然后再进行编译
+   update_clean_make  执行make clean 并同步最新的源码 再进行编译
+   update_script      将脚本同步到最新
+   update_script_rely 将脚本和源码依赖同步到最新
+
+
+例子：  
+  1.新建一个文件夹下载你需要的源码并进行编译(适合首次编译)  
+   bash $openwrt new_source_make   
+
+  2.不执行clean,执行make download 和make -j V=s(适合二次编译)   
+   bash $openwrt 你起的文件夹名  noclean_make  
+
+  3.清理编译文件，再重新编译(适合二次编译)   
+   bash $openwrt 你起的文件夹名  clean_make    
+
+  4.同步最新的源码清理编译文件再编译(适合二次编译) 
+   bash $openwrt 你起的文件夹名  update_clean_make  
+
+   bash $openwrt help   查看帮助  
+   bash $openwrt update_script   将脚本同步到最新  
+
+
+
+``` 
+
+
 
 ## 版本修改记录
+### ++3.0版本
+1.禁用图形界面
+2.现在支持lean的源码，后期有时间再考虑其他
+
+### ++2.9版本
+
+1. 修复误
+2. 将插件默认选上我经常用的
+3. 添加天气预报
+4. 个别变量改名
+5. 修改固件生成名字，添加日期和时间，方便分类
+6. 重写source_if整个模块（大改动）添加dl文件检测代码
+7. 支持gitpod云编译
+8. 新增 git_reset回退功能
+9.  适配lienol源码
+10. 更新OpenwrtCompileScript使用说明.pdf
+11. 修复windows10子系统无法更新
+12. 增加回退选择，报错可以选择回退到编译选择界面，方便继续编译，而不是重新开始
+13. 脚本支持Deepin 15.11桌面版
+14. 支持N1制作镜像源码
+15. 增加help模块
+16. 脚本支持命令模式
 
 ### ++2.8版本
 
